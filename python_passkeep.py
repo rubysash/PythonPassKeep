@@ -44,13 +44,6 @@ EDIT RECORD/VIEW PASSWORD
 -------------
 Type your unlock key in "KEY1" and click "edit"
 
--------------
-VERSION HISTORY
--------------
-1.00 - Put initial on Github
-1.01 - fix no click on delete
-     - cosmetic code reformatting
-
 """
 
 
@@ -65,6 +58,7 @@ from tkinter import ttk
 from tkinter.ttk import Frame, Button, Label, Style, LabelFrame
 
 import sqlite3                  # DB Stuff
+from sqlite3 import Error       # for raising error
 
 import json                     # file i/o stuff and json serialization/deserialization
 from datetime import datetime   # for date time filename
@@ -102,6 +96,8 @@ opts1 = { 'ipadx': 2, 'ipady': 2 , 'sticky': 'nswe' } # centered
 opts2 = { 'ipadx': 1, 'ipady': 1 , 'sticky': 'e' } # right justified
 opts3 = { 'ipadx': 2, 'ipady': 1 , 'sticky': 'w' } # left justified
 
+ppk_version = '1.0.2'
+db_name = "encrypteds."+ppk_version+".db"
 
 class ScrollableFrame:
     """
@@ -151,14 +147,13 @@ class ScrollableFrame:
 
 
 class Passwords:
-    # connection dir property
-    db_name = 'encrypteds.db'
 
-    def __init__(self, window):
+    def __init__(self, window, db_name):
+        self.db_name = db_name
         self.warned = 0
         # Initializations 
         self.wind = window
-        self.wind.title('Python PassKeep')
+        self.wind.title('Python PassKeep V' + ppk_version)
 
         # default theme for most styling
         self.s = ttk.Style()
@@ -268,7 +263,7 @@ class Passwords:
         frame6 = LabelFrame(helpwin, text='What is this?', style="B.TLabelframe", border=0)
         frame6.grid(row=0,column=0, **opts1)
         msg = """
-This python program saves passwords in an encrypted sqlite database. Every entry is protected with a different key, so you can share the database freely, and only give the password unlock for the record you want them to view.
+This python script saves passwords in a sqlite database. The password portion of each entry is encrypted, but user name and login location is not.  Every entry is protected with a different key, so you can share the database freely, and only give the password unlock for the record you want them to view.
 """
         tk.Message(frame6,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
 
@@ -286,18 +281,17 @@ Here are the module docs:  https://pycryptodome.readthedocs.io/en/latest/src/cip
         frame8 = LabelFrame(helpwin, text='How to Encrypt', style="B.TLabelframe", border=0)
         frame8.grid(row=3,column=0, **opts1)
         msg = """
-Type information in the fields provided.    The "password" is the only field that is encrypted. KEY1 and KEY2 must match.   This is your unlock key when you want to view the password.
+Type information in the fields provided.    The "password" is the only field that is encrypted.  It is unlocked using the KEY1 decryption key. KEY1 and KEY2 must match.   This is your unlock key when you want to view the password.
 
 14 characters is sufficient to stop most brute force attacks, and that is the suggested (not forced), minimum key length.    
 
-It does no good to use strong encryption if your unlock key is weak.   Use a good password that is not a dictionary word, or combination of dictionary words.   A sentence is good.  Here is an example of a good password:
+It does no good to use strong encryption if your unlock key is weak.   Use a good password that is not a dictionary word, or combination of dictionary words.   Here is an example of a good password:
 
 ILikeCoffee!NotStarBuck$
 
 Something like this is easy to remember, but hard to break.
 """
         tk.Message(frame8,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
-
 
         frame9 = LabelFrame(helpwin, text='How to Decrypt', style="B.TLabelframe", border=0)
         frame9.grid(row=4,column=0, **opts1)
@@ -306,7 +300,44 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
 """
         tk.Message(frame9,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
 
-        
+        frame10 = LabelFrame(helpwin, text='To Do/Fixme', style="B.TLabelframe", border=0)
+        frame10.grid(row=4,column=0, **opts1)
+        msg = """
+-------------
+FIX
+-------------
+# fixme:  add a delete confirmation prompt
+# fixme:  alternating colors not working
+# fixme:  verify precisely for documentation what mainloop does
+# fixme:  mousewheel is not working as expected
+-------------
+ADD FEATURE
+-------------
+# todo:  add categories/folders instead of simple records
+# todo:  give option to load file of their choice
+# todo:  add simple backup button for file.datestamp.db
+# todo:  add option to encrypt spreadsheet/csv
+-------------
+VERSION HISTORY
+-------------
+1.0.0
+- Put initial on Github
+1.0.1
+- fix no click on delete
+- cosmetic code reformatting
+1.0.2
+- auto create db if not exist
+- cosmetic code reformatting
+- More help documentation
+- grammar touch ups
+- modify db name and title to have version name
+
+
+"""
+        tk.Message(frame10,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
+
+
+
 
     # serialize, encrypt, salt
     def encrypt_it(self,plain_text,password):
@@ -454,7 +485,7 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
         self.get_records()
 
     # delete that entry
-    # fixme:  add a prompt
+    # fixme:  add a delete confirmation prompt
     def delete_password(self):
         self.message['text'] = ''
 
@@ -472,8 +503,6 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
         
         # guess they did.   Get what they clicked
         id = self.tree.item(self.tree.selection())['text']
-        #user = self.tree.item(self.tree.selection())['values'][0]
-        #url = self.tree.item(self.tree.selection())['values'][1]
 
         # build query
         query = 'DELETE FROM encrypts WHERE id = ?'
@@ -524,15 +553,6 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
             self.get_records()
             return
 
-        # fixme:  I think this code will never trigger as bug was fixed
-        if len(self.decrypt_it(passw,self.key1.get())) == 0:
-            msg = "506: Decrypt Error (type key in 'KEY1' to unlock)"
-            self.message['text'] = msg
-            mb.showinfo("Information", msg)
-            self.edit_wind.destroy()
-            self.get_records()
-            return
-        
         # build the layouts
         frame1 = LabelFrame(self.edit_wind, text = 'OLD INFO', style="B.TLabelframe")
         frame1.grid(row = 0, column = 0, columnspan = 2, pady=20, padx=20)
@@ -601,7 +621,7 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
         # repopulate table
         self.get_records()
         
-        # fixme:  what does this do again?
+        # fixme:  verify precisely for documentation what mainloop does
         self.edit_wind.mainloop()
 
     # save the edited data
@@ -634,7 +654,60 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
         # repopulate main window table
         self.get_records()
 
+def show_error(e):
+    print(e)
+    sys.exit()
+
+def create_connection(db_file):
+    """ create a database connection to the SQLite database
+        specified by db_file
+    :param db_file: database file
+    :return: Connection object or None
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+        return conn
+    except Error as e:
+        show_error(e)
+    return conn
+
+def create_table(conn, create_table_sql):
+    """ create a table from the create_table_sql statement
+    :param conn: Connection object
+    :param create_table_sql: a CREATE TABLE statement
+    :return:
+    """
+    try:
+        c = conn.cursor()
+        c.execute(create_table_sql)
+    except Error as e:
+        print(e)
+
+def touch_db(db_name):
+
+    sql_create_encrypts_table = """ CREATE TABLE IF NOT EXISTS `encrypts` (
+                                        `id` integer PRIMARY KEY,
+                                        `username` text NOT NULL,
+                                        `password` text,
+                                        `login_uri` text
+                                    ); """
+    # create a database connection
+    conn = create_connection(db_name)
+
+    # create tables
+    if conn is not None:
+        # create table
+        create_table(conn, sql_create_encrypts_table)
+    else:
+        print("Error! cannot create the database connection.")
+
+
 if __name__ == '__main__':
+    # create a db if none exist
+    touch_db(db_name)
+    
+    # catch the ctrl c and break clean if we can
     try:
         # create class instance of tk.Tk
         window = tk.Tk()
@@ -646,16 +719,11 @@ if __name__ == '__main__':
         window.option_add("*Background", grey)
 
         # create instance of class 
-        application = Passwords(window)
+        application = Passwords(window, db_name)
 
-        # fixme: lookup and document what mainloop exactly does
+        # fixme:  verify precisely for documentation what mainloop does
         window.mainloop()
     except KeyboardInterrupt:
         print("CTRL+C Detected, stopping")
         sys.exit()
 
-# fixme:  delete doesn't force a click or verify
-# todo:  add categories/folders instead of simple records
-# todo:  give option to load file of their choice
-# todo:  add simple backup button for file.datestamp.db
-# todo:  no proper error message when click delete without selection
