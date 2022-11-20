@@ -11,7 +11,6 @@ KNOWN ISSUE
 It is not designed for multiple connections to database.
 Use it as one thread via one script only.
 
-
 -------------
 BACKUP
 -------------
@@ -45,7 +44,7 @@ EDIT RECORD/VIEW PASSWORD
 Type your unlock key in "KEY1" and click "edit"
 
 """
-
+import gvars
 
 # GUI Stuff
 import tkinter as tk
@@ -62,9 +61,14 @@ from sqlite3 import Error       # for raising error
 
 import json                     # file i/o stuff and json serialization/deserialization
 from datetime import datetime   # for date time filename
+#import datetime as objDateTime
 import time                     # for run timer
 import random                   # for the inspiration randoms
 import sys                      # for the graceful exit
+
+
+# for partial
+from functools import partial
 
 # encryption stuff
 from base64 import b64encode, b64decode
@@ -73,31 +77,51 @@ from Cryptodome.Cipher import AES
 import os
 from Cryptodome.Random import get_random_bytes
 
-# some colors
-grey = '#dcdad5'
+# https://stackoverflow.com/questions/1966929/tk-treeview-column-sort#1967793
+class MyTreeview(ttk.Treeview):
+    """
+    Rewrite of treeview to allow clickable/sortable by header
+    """
+    def heading(self, column, sort_by=None, **kwargs):
+        if sort_by and not hasattr(kwargs, 'command'):
+            func = getattr(self, f"_sort_by_{sort_by}", None)
+            if func:
+                kwargs['command'] = partial(func, column, False)
+        return super().heading(column, **kwargs)
 
-bgcolor = '#ECECEC'
-white  = '#FFFFFF'
+    def _sort(self, column, reverse, data_type, callback):
+        l = [(self.set(k, column), k) for k in self.get_children('')]
+        l.sort(key=lambda t: data_type(t[0]), reverse=reverse)
+        for index, (_, k) in enumerate(l):
+            self.move(k, '', index)
+        self.heading(column, command=partial(callback, column, not reverse))
 
-dblack = '#000000'
-lblack = '#444444'
+    def _sort_by_num(self, column, reverse):
+        self._sort(column, reverse, int, self._sort_by_num)
 
-dred   = '#FF0000'
-lred   = '#f9dede'
+    def _sort_by_name(self, column, reverse):
+        self._sort(column, reverse, str, self._sort_by_name)
 
-dgreen = '#076d05'
-lgreen = '#e0f9d9'
+    def _sort_by_date(self, column, reverse):
+        def _str_to_datetime(string):
+            return datetime.datetime.strptime(string, "%Y-%m-%d")
+        self._sort(column, reverse, _str_to_datetime, self._sort_by_date)
+    
+    def _sort_by_multidecimal(self, column, reverse):
+        def _multidecimal_to_str(string):
+            arrString = string.split(".")
+            strNum = ""
+            for iValue in arrString:
+                strValue = f"{int(iValue):02}"
+                strNum = "".join([strNum, str(strValue)])
+            strNum = "".join([strNum, "0000000"])
+            return int(strNum[:8])
+        self._sort(column, reverse, _multidecimal_to_str, self._sort_by_multidecimal)
 
-dblue  = '#4a6984'
-lblue  = '#e2e6ff'
-
-# Styles
-opts1 = { 'ipadx': 2, 'ipady': 2 , 'sticky': 'nswe' } # centered
-opts2 = { 'ipadx': 1, 'ipady': 1 , 'sticky': 'e' } # right justified
-opts3 = { 'ipadx': 2, 'ipady': 1 , 'sticky': 'w' } # left justified
-
-ppk_version = '1.0.2'
-db_name = "encrypteds."+ppk_version+".db"
+    def _sort_by_numcomma(self, column, reverse):
+        def _numcomma_to_num(string):
+            return int(string.replace(",", ""))
+        self._sort(column, reverse, _numcomma_to_num, self._sort_by_numcomma)
 
 class ScrollableFrame:
     """
@@ -150,10 +174,10 @@ class Passwords:
 
     def __init__(self, window, db_name):
         self.db_name = db_name
-        self.warned = 0
+
         # Initializations 
         self.wind = window
-        self.wind.title('Python PassKeep V' + ppk_version)
+        self.wind.title('Python PassKeep V' + gvars.ppk_version)
 
         # default theme for most styling
         self.s = ttk.Style()
@@ -161,7 +185,7 @@ class Passwords:
 
         # my styling for labels
         self.s.configure('B.TLabelframe.Label', font=('courier', 18, 'bold'), 
-            foreground=dblue, background=grey)
+            foreground=gvars.dblue, background=gvars.grey)
 
         # bastardized entry styling
         self.estyle = ttk.Style()
@@ -175,13 +199,13 @@ class Passwords:
                               'border':'2', 'sticky': 'nswe'})])
         
         self.estyle.configure("EntryStyle.TEntry",
-                         background=grey, 
-                         foreground=lblack,
-                         fieldbackground=white)
+                         background=gvars.grey, 
+                         foreground=gvars.lblack,
+                         fieldbackground=gvars.white)
         
         # Treeview styles
         self.s.configure("mytv.Treeview", highlightthickness=0, bd=0, font=('courier', 12)) 
-        self.s.configure('mytv.Treeview.Heading', background='gray', font=('courier', 14, 'bold'))
+        self.s.configure('mytv.Treeview.Heading', background=gvars.grey, font=('courier', 14, 'bold'))
        
         # Creating a Frame Container 
         frame = LabelFrame(self.wind, text = 'ADD NEW RECORD', style="B.TLabelframe")
@@ -189,20 +213,20 @@ class Passwords:
 
         # Name Input
         Label(frame, text = ' USER: ', font=('courier', 14, 'bold'), 
-            foreground=dblue).grid(row = 1, column = 0, **opts2)
+            foreground=gvars.dblue).grid(row = 1, column = 0, **gvars.opts2)
         self.user = ttk.Entry(frame,style="EntryStyle.TEntry")
         self.user.focus()
         self.user.grid(row = 1, column = 1)
 
         # Pass Input
         Label(frame, text = ' PASS: ', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 2, column = 0, **opts2)
+            foreground=gvars.dblue).grid(row = 2, column = 0, **gvars.opts2)
         self.passw = ttk.Entry(frame,style="EntryStyle.TEntry")
         self.passw.grid(row = 2, column = 1)
 
         # URL
         Label(frame, text = '  URL: ', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 3, column = 0, **opts2)
+            foreground=gvars.dblue).grid(row = 3, column = 0, **gvars.opts2)
         self.url = ttk.Entry(frame,style="EntryStyle.TEntry")
         self.url.grid(row = 3, column = 1)
 
@@ -211,18 +235,18 @@ class Passwords:
 
         # key
         Label(frame4, text = ' KEY1: ', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 1, column = 0, **opts2)
+            foreground=gvars.dblue).grid(row = 1, column = 0, **gvars.opts2)
         self.key1= ttk.Entry(frame4, show="*",style="EntryStyle.TEntry")
         self.key1.grid(row=1, column=1)
 
         # verify
         Label(frame4, text = ' KEY2: ', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row=2, column = 0, **opts2)
+            foreground=gvars.dblue).grid(row=2, column = 0, **gvars.opts2)
         self.key2 = ttk.Entry(frame4, show="*",style="EntryStyle.TEntry")
         self.key2.grid(row=2, column=1)
 
         # Output Messages 
-        self.message = Label(text = ' ', font=('courier', 14, 'bold'),foreground=dred)
+        self.message = Label(text = ' ', font=('courier', 14, 'bold'),foreground=gvars.dred)
         self.message.grid(row = 7, column = 0, columnspan = 4, sticky = W + E, padx=20)
 
         # Buttons
@@ -232,25 +256,50 @@ class Passwords:
         ttk.Button(text = 'HELP', command = self.show_help).grid(row = 8, column = 3, sticky = W + E)
 
         # Table
-        self.tree = ttk.Treeview(height = 20, columns = ('#0','#1'),style='mytv.Treeview')
+        self.tree = MyTreeview(columns=['ID','USERNAME','LOGIN/URL'], show="headings", style='mytv.Treeview')
         self.tree.grid(row = 9, column=0, columnspan=4)
         
         # Configure columns to preferred spacing
-        self.tree.column('#0', anchor=CENTER, stretch=NO, width=75 )
-        self.tree.heading('#0', text = 'ID')
-        self.tree.column('#1', stretch=NO, width=200 )
-        self.tree.heading('#1', text = 'USERNAME', anchor = W)
-        self.tree.column('#2', stretch=NO, width=425 )
-        self.tree.heading('#2', text = 'LOGIN/URL', anchor = W)
-
+        self.tree.heading('ID', text='ID', sort_by='num')
+        self.tree.column('ID', anchor=CENTER, stretch=NO, width=75 )
+        
+        self.tree.column('USERNAME', stretch=NO, width=200 )
+        self.tree.heading('USERNAME', text = 'USERNAME', anchor = W, sort_by='name')
+        
+        self.tree.column('LOGIN/URL', stretch=NO, width=425 )
+        self.tree.heading('LOGIN/URL', text = 'LOGIN/URL', anchor = W, sort_by='name')
 
         # Filling the Rows
         self.get_records()
 
-        # fixme:  can't get alt colors working
-        #self.tree.tag_configure('odd', foreground='black')
-        #self.tree.tag_configure('even', foreground='white')
- 
+        # fixme:  tags not working with or without style
+        self.tree.tag_configure('odd', foreground='black')
+        self.tree.tag_configure('even', foreground='white')
+
+    # Get all records from DB
+    def get_records(self):
+
+        # cleaning Table 
+        records = self.tree.get_children()
+        for element in records:
+            self.tree.delete(element)
+
+        # getting data
+        query = 'SELECT * FROM encrypts ORDER BY login_uri DESC'
+        db_rows = self.run_query(query)
+        
+        # filling data
+        # fixme:  alternating colors not working
+        x = 1
+        for row in db_rows:
+            if x % 2 == 0:
+                # fixme, difference in 0, and 'end' controls sort order, why?
+                self.tree.insert("",0,values=[row[0],row[1],row[3]], tags=('odd',))
+            else:
+                self.tree.insert("",0,values=[row[0],row[1],row[3]], tags=('even',))
+            x = x + 1
+        
+    # show help/instructions
     def show_help(self):
         mb.showinfo("Information", "PLEASE MAKE BACKUPS OF 'encrypteds.db' FILE!!")
 
@@ -261,82 +310,46 @@ class Passwords:
         helpwin = obj.frame
         
         frame6 = LabelFrame(helpwin, text='What is this?', style="B.TLabelframe", border=0)
-        frame6.grid(row=0,column=0, **opts1)
-        msg = """
-This python script saves passwords in a sqlite database. The password portion of each entry is encrypted, but user name and login location is not.  Every entry is protected with a different key, so you can share the database freely, and only give the password unlock for the record you want them to view.
-"""
+        frame6.grid(row=0,column=0, **gvars.opts1)
+        msg = f6
         tk.Message(frame6,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
 
         frame7 = LabelFrame(helpwin, text='What type of Encryption?', style="B.TLabelframe", border=0)
-        frame7.grid(row=2,column=0, **opts1)
-        msg = """
-The python module Cryptodome.Cipher is using AES 128 with the GCM cipher. It is also salting the password and storing it base 64 so it is compatible with sqlite (stored as a json dictionary).
-
-The base64 is decoded, then the string is decrypted when you enter the proper key. Galois/Counter Mode is defined in http://csrc.nist.gov/publications/nistpubs/800-38D/SP-800-38D.pdf  if you are interested in the stuff I am unable to accurately explain!
-
-Here are the module docs:  https://pycryptodome.readthedocs.io/en/latest/src/cipher/modern.html#gcm-mode
-"""
+        frame7.grid(row=2,column=0, **gvars.opts1)
+        msg = gvars.f7
         tk.Message(frame7,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
 
         frame8 = LabelFrame(helpwin, text='How to Encrypt', style="B.TLabelframe", border=0)
-        frame8.grid(row=3,column=0, **opts1)
-        msg = """
-Type information in the fields provided.    The "password" is the only field that is encrypted.  It is unlocked using the KEY1 decryption key. KEY1 and KEY2 must match.   This is your unlock key when you want to view the password.
-
-14 characters is sufficient to stop most brute force attacks, and that is the suggested (not forced), minimum key length.    
-
-It does no good to use strong encryption if your unlock key is weak.   Use a good password that is not a dictionary word, or combination of dictionary words.   Here is an example of a good password:
-
-ILikeCoffee!NotStarBuck$
-
-Something like this is easy to remember, but hard to break.
-"""
+        frame8.grid(row=3,column=0, **gvars.opts1)
+        msg = gvars.f8
         tk.Message(frame8,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
 
         frame9 = LabelFrame(helpwin, text='How to Decrypt', style="B.TLabelframe", border=0)
-        frame9.grid(row=4,column=0, **opts1)
-        msg = """
-To unlock the vault for your record, type the key in "KEY1" filed then click "edit". This is also the method to change anything such as the login, user, password or your unlock key.
-"""
+        frame9.grid(row=4,column=0, **gvars.opts1)
+        msg = gvars.f9
         tk.Message(frame9,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
 
         frame10 = LabelFrame(helpwin, text='To Do/Fixme', style="B.TLabelframe", border=0)
-        frame10.grid(row=4,column=0, **opts1)
-        msg = """
--------------
-FIX
--------------
-# fixme:  add a delete confirmation prompt
-# fixme:  alternating colors not working
-# fixme:  verify precisely for documentation what mainloop does
-# fixme:  mousewheel is not working as expected
--------------
-ADD FEATURE
--------------
-# todo:  add categories/folders instead of simple records
-# todo:  give option to load file of their choice
-# todo:  add simple backup button for file.datestamp.db
-# todo:  add option to encrypt spreadsheet/csv
--------------
-VERSION HISTORY
--------------
-1.0.0
-- Put initial on Github
-1.0.1
-- fix no click on delete
-- cosmetic code reformatting
-1.0.2
-- auto create db if not exist
-- cosmetic code reformatting
-- More help documentation
-- grammar touch ups
-- modify db name and title to have version name
-
-
-"""
+        frame10.grid(row=4,column=0, **gvars.opts1)
+        msg = gvars.f10
         tk.Message(frame10,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
-
-
+    
+    # load a modified chrome password dump all at once
+    def load_csv(self,inputfile,password):
+        import csv
+        
+        with open(inputfile) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            
+            # modify your csv if this isn't the order
+            for row in csv_reader:
+                (url,user,passw) = row[0],row[1],row[2]
+                encrypted = encrypt_it(passw, password)
+                print(encrypted)
+                serialized = json.dumps(encrypted)
+                query = 'INSERT INTO encrypts VALUES(NULL, ?, ?, ?)'
+                parameters = [user,serialized,url]
+                run_query(query, parameters)
 
 
     # serialize, encrypt, salt
@@ -404,33 +417,6 @@ VERSION HISTORY
             conn.commit()
         return result
 
-    # Get all records from DB
-    def get_records(self):
-
-        # cleaning Table 
-        records = self.tree.get_children()
-        for element in records:
-            self.tree.delete(element)
-
-        # getting data
-        query = 'SELECT * FROM encrypts ORDER BY login_uri DESC'
-        db_rows = self.run_query(query)
-        
-        self.tree.tag_configure('odd', foreground='black')
-        self.tree.tag_configure('even', foreground='white')
-
-        # filling data
-        # fixme:  alternating colors not working
-        x = 1
-        for row in db_rows:
-            if x % 2 == 0:
-                self.tree.insert("",0,text = row[0], values=(row[1],row[3]), tags=('odd',))
-            else:
-                self.tree.insert("",0,text = row[0], values=(row[1],row[3]), tags=('even',))
-            x = x + 1
-        self.tree.tag_configure('odd', foreground='black')
-        self.tree.tag_configure('even', foreground='white')
-
     # Get actual encrypted password dictionary
     def get_password(self,id):
 
@@ -473,13 +459,12 @@ VERSION HISTORY
             # json doesn't like encrypted text, so we need to serialize it
             encrypted = self.encrypt_it(self.passw.get(), self.key1.get())
             serialized = json.dumps(encrypted)
-  
             query = 'INSERT INTO encrypts VALUES(NULL, ?, ?, ?)'
             parameters =  (self.user.get(), serialized, self.url.get())
             self.run_query(query, parameters)
             self.message['text'] = 'RECORD SAVED'
         else:
-            msg = '434: All Fields are Required to Save. Keys Must Match'
+            msg = '474: All Fields are Required to Save. Keys Must Match'
             self.message['text'] = msg
             mb.showinfo("Information", msg)
         self.get_records()
@@ -502,7 +487,7 @@ VERSION HISTORY
         self.message['text'] = ''
         
         # guess they did.   Get what they clicked
-        id = self.tree.item(self.tree.selection())['text']
+        id = self.tree.item(self.tree.selection())['values'][0]
 
         # build query
         query = 'DELETE FROM encrypts WHERE id = ?'
@@ -530,9 +515,9 @@ VERSION HISTORY
             return
             
         # guess they did.   Get what they clicked
-        id = self.tree.item(self.tree.selection())['text']
-        user = self.tree.item(self.tree.selection())['values'][0]
-        url = self.tree.item(self.tree.selection())['values'][1]
+        id = self.tree.item(self.tree.selection())['values'][0]
+        user = self.tree.item(self.tree.selection())['values'][1]
+        url = self.tree.item(self.tree.selection())['values'][2]
         
         # make new window
         self.edit_wind = Toplevel()
@@ -546,7 +531,7 @@ VERSION HISTORY
         try:
             decrypted = self.decrypt_it(passw,self.key1.get())
         except ValueError as e:
-            msg = "497: Decrypt Error (type key in 'KEY1' to unlock)"
+            msg = "541: Decrypt Error (type key in 'KEY1' to unlock)"
             self.message['text'] = msg
             mb.showinfo("Information", msg)
             self.edit_wind.destroy()
@@ -565,47 +550,47 @@ VERSION HISTORY
         
         # Old Name
         Label(frame1, text = 'Old User:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 0, column = 1,**opts2)
+            foreground=gvars.dblue).grid(row = 0, column = 1,**gvars.opts2)
         Entry(frame1, textvariable = StringVar(frame1, value = user), state = 'readonly'
             ).grid(row = 0, column = 2)
         # New Name
         Label(frame2, text = 'New User:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 0, column = 3,**opts2)
+            foreground=gvars.dblue).grid(row = 0, column = 3,**gvars.opts2)
         new_user= ttk.Entry(frame2,style="EntryStyle.TEntry")
         new_user.grid(row = 0, column = 4)
 
         # Old Passw
         Label(frame1, text = 'Old Password:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 1, column = 1,**opts2)
+            foreground=gvars.dblue).grid(row = 1, column = 1,**gvars.opts2)
         Entry(frame1, textvariable = StringVar(
             frame1, value=decrypted), state = 'readonly'
             ).grid(row = 1, column = 2)
         # New passw
         Label(frame2, text = 'New Password:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 1, column = 3,**opts2)
+            foreground=gvars.dblue).grid(row = 1, column = 3,**gvars.opts2)
         new_passw = ttk.Entry(frame2,style="EntryStyle.TEntry")
         new_passw.grid(row = 1, column = 4)
 
         # Old URL
         Label(frame1, text = 'Old URL:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 2, column = 1,**opts2)
+            foreground=gvars.dblue).grid(row = 2, column = 1,**gvars.opts2)
         Entry(frame1, textvariable = StringVar(
             frame1, value = url), state = 'readonly'
             ).grid(row = 2, column = 2)
         # New URL
         Label(frame2, text = 'New URL:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 2, column = 3,**opts2)
+            foreground=gvars.dblue).grid(row = 2, column = 3,**gvars.opts2)
         new_url= ttk.Entry(frame2,style="EntryStyle.TEntry")
         new_url.grid(row = 2, column = 4)
 
         # key
         Label(frame3, text = 'KEY1:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 1, column = 1,**opts2)
+            foreground=gvars.dblue).grid(row = 1, column = 1,**gvars.opts2)
         key1 = ttk.Entry(frame3,show="*",style="EntryStyle.TEntry")
         key1.grid(row=1, column = 2)
         # verify
         Label(frame3, text = 'KEY2:', font=('courier', 14, 'bold'),
-            foreground=dblue).grid(row = 2, column = 1,**opts2)
+            foreground=gvars.dblue).grid(row = 2, column = 1,**gvars.opts2)
         key2 = ttk.Entry(frame3,show="*",style="EntryStyle.TEntry")
         key2.grid(row = 2, column = 2)
 
@@ -647,9 +632,10 @@ VERSION HISTORY
             # notify user
             self.message['text'] = 'Record Saved'
         else:
-            # user didn't do something righ
-            self.message['text'] = 'Data Missing or Your Encryption Keys Do Not Match'
-            mb.showinfo("Information", "Data Missing or Your Encryption Keys Do Not Match")
+            # user didn't do something right
+            msg = '643: Data Missing or Encryption Keys Do Not Match'
+            self.message['text'] = msg
+            mb.showinfo("Information", msg)
         
         # repopulate main window table
         self.get_records()
@@ -658,6 +644,8 @@ def show_error(e):
     print(e)
     sys.exit()
 
+# initial test for db connection
+# fixme: duplicate code
 def create_connection(db_file):
     """ create a database connection to the SQLite database
         specified by db_file
@@ -672,6 +660,7 @@ def create_connection(db_file):
         show_error(e)
     return conn
 
+# add a table to connected database
 def create_table(conn, create_table_sql):
     """ create a table from the create_table_sql statement
     :param conn: Connection object
@@ -684,8 +673,8 @@ def create_table(conn, create_table_sql):
     except Error as e:
         print(e)
 
+# create db if it doesn't exist
 def touch_db(db_name):
-
     sql_create_encrypts_table = """ CREATE TABLE IF NOT EXISTS `encrypts` (
                                         `id` integer PRIMARY KEY,
                                         `username` text NOT NULL,
@@ -700,12 +689,15 @@ def touch_db(db_name):
         # create table
         create_table(conn, sql_create_encrypts_table)
     else:
-        print("Error! cannot create the database connection.")
-
+        msg = '690: Data Missing or Your Encryption Keys Do Not Match'
+        print(msg)
+        self.message['text'] = msg
+        mb.showinfo("Information", msg)
+        
 
 if __name__ == '__main__':
     # create a db if none exist
-    touch_db(db_name)
+    touch_db(gvars.db_name)
     
     # catch the ctrl c and break clean if we can
     try:
@@ -713,13 +705,13 @@ if __name__ == '__main__':
         window = tk.Tk()
         
         # default configurations to override theme
-        window.configure(bg=grey)
+        window.configure(bg=gvars.grey)
         window.option_add("*Font", "Helvitica 14")
         window.option_add("*Label.Font", "Helvitica 18 bold")
-        window.option_add("*Background", grey)
+        window.option_add("*Background", gvars.grey)
 
         # create instance of class 
-        application = Passwords(window, db_name)
+        application = Passwords(window, gvars.db_name)
 
         # fixme:  verify precisely for documentation what mainloop does
         window.mainloop()
