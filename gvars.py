@@ -64,12 +64,13 @@ FIX
 -------------
 ADD FEATURE
 -------------
-# todo:  add categories/folders instead of simple records
-# todo:  give option to load file of their choice
-# todo:  add simple backup button for file.datestamp.db
-# todo:  add option to encrypt spreadsheet/csv
-# todo:  search logins/urls
-# done:  sort by column header choice
+# todo: add categories/folders instead of simple records
+# todo: give option to load file of their choice
+# todo: add simple backup button for file.datestamp.db
+# todo: add option to encrypt spreadsheet/csv
+# todo: search logins/urls
+# todo: load default "old" into "new" as default when editing
+# done: sort by column header choice
 -------------
 VERSION HISTORY
 -------------
