@@ -3,6 +3,7 @@ Passkeep clone, written in python
 Each record has it's own unlock key
 You can share full database and only unlock keys of records you want to share
 
+latest:  https://github.com/rubysash/PythonPassKeep
 
 -------------
 KNOWN ISSUE
@@ -42,6 +43,14 @@ Fill it out and click "save"
 EDIT RECORD/VIEW PASSWORD
 -------------
 Type your unlock key in "KEY1" and click "edit"
+
+-------------
+VERSION HISTORY
+-------------
+1.00 - Put initial on Github
+1.01 - fix no click on delete
+     - cosmetic code reformatting
+
 """
 
 
@@ -54,7 +63,6 @@ from tkinter import Tk, Text, BOTH, W, N, E, S, DISABLED, font
 
 from tkinter import ttk
 from tkinter.ttk import Frame, Button, Label, Style, LabelFrame
-
 
 import sqlite3                  # DB Stuff
 
@@ -300,10 +308,6 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
 
         
 
-
-
-
-
     # serialize, encrypt, salt
     def encrypt_it(self,plain_text,password):
         """
@@ -341,6 +345,8 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
         
         # data placeholders
         decrypted = []
+        
+        # convert json dictionary to serial string
         d = json.loads(encrypted)
 
         # decode the dictionary entries from base64
@@ -451,8 +457,10 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
     # fixme:  add a prompt
     def delete_password(self):
         self.message['text'] = ''
+
+        # did they select something?
         try:
-           self.tree.item(self.tree.selection())['text']
+           self.tree.item(self.tree.selection())['values'][1]
         except IndexError as e:
             msg = 'Please select a Record'
             self.message['text'] = msg
@@ -462,10 +470,10 @@ To unlock the vault for your record, type the key in "KEY1" filed then click "ed
         # clear our message
         self.message['text'] = ''
         
-        # get data we clicked on
-        user = self.tree.item(self.tree.selection())['values'][0]
-        login_uri = self.tree.item(self.tree.selection())['values'][1]
+        # guess they did.   Get what they clicked
         id = self.tree.item(self.tree.selection())['text']
+        #user = self.tree.item(self.tree.selection())['values'][0]
+        #url = self.tree.item(self.tree.selection())['values'][1]
 
         # build query
         query = 'DELETE FROM encrypts WHERE id = ?'
@@ -650,3 +658,4 @@ if __name__ == '__main__':
 # todo:  add categories/folders instead of simple records
 # todo:  give option to load file of their choice
 # todo:  add simple backup button for file.datestamp.db
+# todo:  no proper error message when click delete without selection
