@@ -305,13 +305,13 @@ class Passwords:
 
         thiswin = tk.Toplevel(window)
         thiswin.geometry('750x750')
-        thiswin.configure(bg=grey,  padx=20, pady=20)
+        thiswin.configure(bg=gvars.grey,  padx=20, pady=20)
         obj = ScrollableFrame(thiswin,height=300,width=900 )
         helpwin = obj.frame
         
         frame6 = LabelFrame(helpwin, text='What is this?', style="B.TLabelframe", border=0)
         frame6.grid(row=0,column=0, **gvars.opts1)
-        msg = f6
+        msg = gvars.f6
         tk.Message(frame6,text = msg, width=650).grid(row = 0, column = 0, sticky = W + E, padx=20)
 
         frame7 = LabelFrame(helpwin, text='What type of Encryption?', style="B.TLabelframe", border=0)
